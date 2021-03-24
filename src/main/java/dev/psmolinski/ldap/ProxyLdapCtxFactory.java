@@ -1,5 +1,6 @@
 package dev.psmolinski.ldap;
 
+import javax.naming.CommunicationException;
 import javax.naming.Context;
 import javax.naming.NamingException;
 import javax.naming.ldap.InitialLdapContext;
@@ -18,13 +19,17 @@ import java.util.Map;
  * <br/>
  * To use this class set the properties:
  * <pre>java.naming.factory.initial=dev.psmolinski.ldap.ProxyLdapCtxFactory
- * com.sun.jndi.ldap.idle.timeout=180000</pre>
+ * com.sun.jndi.ldap.idle.timeout=180000
+ * com.sun.jndi.ldap.idle.refresh=false</pre>
  */
 public class ProxyLdapCtxFactory implements InitialContextFactory {
 
     public Context getInitialContext(Hashtable<?,?> environment) throws NamingException {
 
-        LdapCtxHolder holder = new LdapCtxHolder(sanitize(environment), getIdleTimeout(environment));
+        LdapCtxHolder holder = new LdapCtxHolder(
+                sanitize(environment),
+                getIdleTimeout(environment),
+                getIdleRefresh(environment));
 
         return (LdapContext)Proxy.newProxyInstance(
                 ClassLoader.getSystemClassLoader(),
@@ -50,6 +55,12 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
         return Long.parseLong(idleTimeoutStr);
     }
 
+    private static boolean getIdleRefresh(Hashtable<?,?> environment) {
+        String idleRefreshStr = (String)environment.get("com.sun.jndi.ldap.idle.refresh");
+        if (idleRefreshStr==null) idleRefreshStr = "false";
+        return Boolean.valueOf(idleRefreshStr);
+    }
+
     private static Hashtable<Object,Object> sanitize(Hashtable<?,?> environment) {
         Hashtable<Object,Object> _environment = new Hashtable<>();
         for (Map.Entry<?,?> e : environment.entrySet()) {
@@ -58,6 +69,9 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
                 continue;
             }
             if ("com.sun.jndi.ldap.idle.timeout".equals(e.getKey())) {
+                continue;
+            }
+            if ("com.sun.jndi.ldap.idle.refresh".equals(e.getKey())) {
                 continue;
             }
             _environment.put(e.getKey(), e.getValue());
@@ -69,6 +83,7 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
 
         private final Hashtable<?,?> environment;
         private final long idleTimeout;
+        private final boolean idleRefresh;
 
         private LdapContext context;
         private long lastAccess;
@@ -76,11 +91,15 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
         /**
          * Initialize the context and create the first context object. It is important to create
          * the context, because the context creation is used to verify the bindDN / password.
+         * @param environment target environment passed to the underlying context factory
+         * @param idleTimeout time how long the connection is usable since the last access
+         * @param idleRefresh flag whether the connection should be recreated or just closed
          */
-        public LdapCtxHolder(Hashtable<?,?> environment, long idleTimeout) throws NamingException {
+        public LdapCtxHolder(Hashtable<?,?> environment, long idleTimeout, boolean idleRefresh) throws NamingException {
 
             this.environment = environment;
             this.idleTimeout = idleTimeout;
+            this.idleRefresh = idleRefresh;
 
             context = new InitialLdapContext(environment, null);
             lastAccess = System.currentTimeMillis();
@@ -88,8 +107,11 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
         }
 
         /**
-         * Retrieve the underlying LDAP context. When the last one was closed or the the time since
-         * last access is longer than the declared idle timeout, a new connection is created.
+         * Retrieve the underlying LDAP context. If the last access time was more than
+         * {@link #idleTimeout} milliseconds ago, the current connection is no longer available.
+         * In such case the connection is closed, and depending on the {@link #idleRefresh} value,
+         * the connection is recreated or {@link CommunicationException} is thrown indicating
+         * that the current connection is no longer usable.
          */
         public synchronized LdapContext getContext() throws NamingException {
 
@@ -103,6 +125,10 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
                 context = null;
             }
 
+            if (!idleRefresh) {
+                throw new CommunicationException("LDAP Context idle for "+(System.currentTimeMillis()-lastAccess)+"ms");
+            }
+
             context = new InitialLdapContext(environment, null);
             lastAccess = System.currentTimeMillis();
             return context;
@@ -111,6 +137,7 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
 
         /**
          * In case of LDAP closing of a context object does not bring it to the terminal state.
+         * This means the context could be reconnected.
          */
         public synchronized void close() throws NamingException {
             if (this.context==null) return;
