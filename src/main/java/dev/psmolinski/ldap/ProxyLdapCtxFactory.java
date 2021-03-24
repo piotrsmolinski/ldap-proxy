@@ -5,6 +5,7 @@ import javax.naming.NamingException;
 import javax.naming.ldap.InitialLdapContext;
 import javax.naming.ldap.LdapContext;
 import javax.naming.spi.InitialContextFactory;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.Hashtable;
 import java.util.Map;
@@ -33,7 +34,11 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
                         holder.close();
                         return null;
                     }
-                    return method.invoke(holder.getContext(), args);
+                    try {
+                        return method.invoke(holder.getContext(), args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getTargetException();
+                    }
                 }
         );
 
