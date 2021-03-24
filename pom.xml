@@ -29,4 +29,8 @@
 
   </dependencies>
 
+  <build>
+    <finalName>ldap-proxy</finalName>
+  </build>
+
 </project>
