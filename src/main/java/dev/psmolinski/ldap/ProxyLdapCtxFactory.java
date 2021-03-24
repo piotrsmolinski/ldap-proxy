@@ -42,7 +42,7 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
     private static long getIdleTimeout(Hashtable<?,?> environment) {
         String idleTimeoutStr = (String)environment.get("com.sun.jndi.ldap.idle.timeout");
         if (idleTimeoutStr==null) idleTimeoutStr = "600000"; // 10 minutes
-        return Long.getLong(idleTimeoutStr);
+        return Long.parseLong(idleTimeoutStr);
     }
 
     private static Hashtable<Object,Object> sanitize(Hashtable<?,?> environment) {
