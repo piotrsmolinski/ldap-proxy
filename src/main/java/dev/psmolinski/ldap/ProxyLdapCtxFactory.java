@@ -115,7 +115,7 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
          */
         public synchronized LdapContext getContext() throws NamingException {
 
-            if (context!=null && lastAccess<System.currentTimeMillis()+idleTimeout) {
+            if (context!=null && lastAccess+idleTimeout > System.currentTimeMillis()) {
                 lastAccess = System.currentTimeMillis();
                 return context;
             }
