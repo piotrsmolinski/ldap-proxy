@@ -115,8 +115,11 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
          */
         public synchronized LdapContext getContext() throws NamingException {
 
-            if (context!=null && lastAccess+idleTimeout > System.currentTimeMillis()) {
-                lastAccess = System.currentTimeMillis();
+            long now = System.currentTimeMillis();
+            long idleAge = now-lastAccess;
+
+            if (context!=null && idleAge < idleTimeout) {
+                lastAccess = now;
                 return context;
             }
 
@@ -126,11 +129,11 @@ public class ProxyLdapCtxFactory implements InitialContextFactory {
             }
 
             if (!idleRefresh) {
-                throw new CommunicationException("LDAP Context idle for "+(System.currentTimeMillis()-lastAccess)+"ms");
+                throw new CommunicationException("LDAP Context idle for "+idleAge+"ms");
             }
 
             context = new InitialLdapContext(environment, null);
-            lastAccess = System.currentTimeMillis();
+            lastAccess = now;
             return context;
 
         }
